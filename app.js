@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
@@ -18,9 +19,7 @@ const userSchema = new mongoose.Schema({
 	password: String
 });
 
-const secret = "thisisourlittlesecret.";
-
-userSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']});
+userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ['password']});	//To take the variable from the env file
 
 const User = mongoose.model('User', userSchema);
 
