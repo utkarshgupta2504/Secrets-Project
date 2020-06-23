@@ -3,7 +3,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const ejs = require('ejs');
-const md5 = require('md5');
+const bcrypt = require('bcrypt');
+
+const saltRounds = 10;
 
 const app = express();
 
@@ -28,63 +30,84 @@ app.get('/', (req, res) => {
 
 app.route('/register')
 
-	.get((req, res) => {
+.get((req, res) => {
 
-		res.render('register');
+	res.render('register');
 
-	})
+})
 
-	.post((req, res) => {
+.post((req, res) => {
 
-		const newUser = new User({
+		bcrypt.hash(req.body.password, saltRounds, (err, hash) => {	//Recieving the hash after 10 rounds of salting.
 
-			username: req.body.username,
-			password: md5(req.body.password)	//Converts to hash.
+			const newUser = new User({
+
+				username: req.body.username,
+				password: hash
+			});
+
+			newUser.save(err => {
+
+				if(err) {
+
+					console.log(err);
+				}
+
+				else {
+
+					res.render('secrets');
+				}
+			})
 		});
 
-		newUser.save(err => {
-
-			if(err) {
-
-				console.log(err);
-			}
-
-			else {
-
-				res.render('secrets');
-			}
-		})
+		
 	});
 
 app.route('/login') 
 
-	.get((req, res) => {
+.get((req, res) => {
 
-		res.render('login');
+	res.render('login');
 	
-	})
+})
 
-	.post((req, res) => {
+.post((req, res) => {
 
-		const username = req.body.username;
-		const password = md5(req.body.password);
+	const username = req.body.username;
+	const password = req.body.password;
 
-		User.findOne({username: username}, (err, found) => {
+	User.findOne({username: username}, (err, found) => {
 
-			if(err) {
+		if(err) {
 
-				console.log(err);
+			console.log(err);
+		}
+
+		else {
+
+			if(found) {
+
+				bcrypt.compare(password, found.password, (err, res1) => {
+
+					if(res1) {
+
+						res.render('secrets');
+					}
+
+					else {
+
+						res.send('Incorrect Password, Please Try Again.')
+					}
+				})
 			}
 
 			else {
 
-				if(found.password === password) {
-
-					res.render('secrets');
-				}
+				res.send('Username not registered. You may want to register yourself up.')
 			}
-		})
+		}
 	})
+})
 
 app.listen(3000, () => {
 
