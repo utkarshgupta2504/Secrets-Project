@@ -6,6 +6,8 @@ const ejs = require('ejs');
 var session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');	//For passport module.
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 const app = express();
 
@@ -23,35 +25,95 @@ app.use(session({	//Maintains our session
 app.use(passport.initialize());	//Initializes the passport module
 app.use(passport.session());	//Starts the passport session and instructs to use cookies.
 
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+  	userProfileURL: 'https://www.googleapis.com/oauth2/v3/userinfo'
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    
+  	console.log(profile);
+
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
 mongoose.connect('mongodb://localhost:27017/userDB', {useNewUrlParser: true, useUnifiedTopology: true});
 
 const userSchema = new mongoose.Schema({
 
 	username: String,
-	password: String
+	password: String,
+	googleId: String,
+	secret: String
 });
 
 userSchema.plugin(passportLocalMongoose);	//Using the passport Plugin
+userSchema.plugin(findOrCreate);
 
 const User = mongoose.model('User', userSchema);
 
 passport.use(User.createStrategy());	//Creating strategy.
 
-passport.serializeUser(User.serializeUser());		//For serialising (Adding cookie).
-passport.deserializeUser(User.deserializeUser());	//For deserialising (Removing Cookie).
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {
+  User.findById(id, function(err, user) {
+    done(err, user);
+  });
+});
 
 app.get('/', (req, res) => {
 
 	res.render('home');
 })
 
+app.get('/auth/google',	
+	passport.authenticate('google', {scope: ['profile']}));
+
+app.get('/auth/google/secrets', 
+
+	passport.authenticate('google', {failureRedirect: '/login'}),
+
+	(req, res) => {
+
+		res.redirect('/secrets');
+	})
+
+
 app.route('/secrets')
+
+.get((req, res) => {
+
+	User.find({"secret": {$ne: null}}, (err, found) => {
+
+		if(err) {
+
+			console.log(err);
+		}
+
+		else {
+
+			if(found) {
+
+				res.render('secrets', {usersWithSecrets: found});
+			}
+		}
+	})
+})
+
+app.route('/submit')
 
 .get((req, res) => {
 
 	if(req.isAuthenticated()) {		//Checks the cookie if present. If yes, authenicates.
 
-		res.render('secrets');
+		res.render('submit');
 	}
 
 	else {
@@ -59,6 +121,31 @@ app.route('/secrets')
 		res.redirect('/login');
 	}
 })
+
+.post((req, res) => {
+
+	const submittedSecret = req.body.secret;
+
+	User.findById(req.user.id, (err, found) => {
+
+		if(err) {
+
+			console.log(err);
+		}
+
+		else {
+
+			if(found) {
+
+				found.secret = submittedSecret;
+				found.save(() => {
+
+					res.redirect('/secrets');
+				})
+			}
+		}
+	})
+});
 
 app.route('/register')
 
@@ -125,7 +212,7 @@ app.route('/login')
 	})
 })
 
-app.route('logout')
+app.route('/logout')
 
 .get((req, res) => {
 
